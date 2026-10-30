@@ -146,7 +146,7 @@ const INITIAL_PRODUCTS = [
     specs: '16A • Single Pole • C-Curve • VisiTrip Fault Indicator • 10kA',
     description: 'Precision overload and short-circuit protection for individual room sub-circuits, geysers, and air conditioners.',
     application: 'Snap onto standard 35mm DIN rail inside distribution boards.',
-    image: 'https://images.unsplash.com/photo-1581092335397-9583fe92d232?auto=format&fit=crop&w=600&q=80'
+    image: 'https://images.unsplash.com/photo-1562034037-ba96b6312a80?auto=format&fit=crop&w=600&q=80'
   },
   {
     id: 'BE-106',
@@ -272,7 +272,7 @@ const INITIAL_PRODUCTS = [
     specs: '600A AC Clamp • Continuity Buzzer • 8-in-1 Insulated Plier & Tester Set',
     description: 'Complete field testing and safety maintenance kit for wiremen, pump technicians, and industrial maintenance engineers.',
     application: 'Essential for troubleshooting motor current draw and neutral earth faults.',
-    image: 'https://images.unsplash.com/photo-1581092335397-9583fe92d232?auto=format&fit=crop&w=600&q=80'
+    image: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80'
   }
 ];
 
@@ -339,7 +339,6 @@ const BalajiLogo = ({ size = 'md' }) => {
   return (
     <div className={`${dimensions} flex-shrink-0 bg-red-50 rounded-2xl p-1.5 border border-red-100 flex items-center justify-center shadow-2xs group-hover:scale-105 transition-transform`}>
       <svg viewBox="0 0 100 100" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
-        {/* House Roof and Chimney matching screenshot emblem */}
         <path
           d="M16 52 L50 20 L84 52"
           stroke="#dc2626"
@@ -354,7 +353,6 @@ const BalajiLogo = ({ size = 'md' }) => {
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        {/* House Side Walls */}
         <path
           d="M26 48 L26 84 L74 84 L74 48"
           stroke="#dc2626"
@@ -362,9 +360,7 @@ const BalajiLogo = ({ size = 'md' }) => {
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        {/* Bottom Ground Line */}
         <line x1="14" y1="92" x2="86" y2="92" stroke="#dc2626" strokeWidth="6" strokeLinecap="round" />
-        {/* Bold 'BE' Monogram */}
         <text
           x="50%"
           y="74%"
@@ -382,12 +378,131 @@ const BalajiLogo = ({ size = 'md' }) => {
   );
 };
 
+// Calculate whether the store is currently open based on Indian Standard Time (UTC+05:30)
+// Store Hours: Monday to Saturday from 9:00 AM to 9:00 PM, Sunday from 9:00 AM to 1:30 PM
+const checkStoreOpenIST = (epochMs) => {
+  const istMs = epochMs + (5 * 60 + 30) * 60 * 1000;
+  const istDate = new Date(istMs);
+  const day = istDate.getUTCDay(); // 0 = Sunday, 1-6 = Monday to Saturday
+  const minutes = istDate.getUTCHours() * 60 + istDate.getUTCMinutes();
+
+  if (day === 0) {
+    // Sunday: 9:00 AM (540 mins) to 1:30 PM (810 mins)
+    return minutes >= 540 && minutes < 810;
+  }
+  // Monday to Saturday: 9:00 AM (540 mins) to 9:00 PM (1260 mins)
+  return minutes >= 540 && minutes < 1260;
+};
+
+// Fluid full-width container class for all screen sizes (Mobile, Laptop, Full HD & 4K TV)
+const CONTAINER_CLASS = 'w-full px-4 sm:px-6';
+
 export default function App() {
+  // --- DYNAMIC STORE OPEN / CLOSED STATUS (IST & Public Time API Sync) ---
+  const [isStoreOpen, setIsStoreOpen] = useState(() => checkStoreOpenIST(Date.now()));
+
+  useEffect(() => {
+    let isMounted = true;
+    let timerId = null;
+
+    // Baseline network time synced with browser monotonic clock (performance.now)
+    let baseNetworkTimeMs = null;
+    let basePerfNow = null;
+
+    const getAccurateNow = () => {
+      if (baseNetworkTimeMs !== null && basePerfNow !== null) {
+        return baseNetworkTimeMs + (performance.now() - basePerfNow);
+      }
+      return Date.now();
+    };
+
+    const updateStoreStatus = () => {
+      if (!isMounted) return;
+      const currentMs = getAccurateNow();
+      setIsStoreOpen(checkStoreOpenIST(currentMs));
+    };
+
+    const syncNetworkTime = async () => {
+      try {
+        let serverTimestamp = null;
+
+        // Primary: WorldTimeAPI for Asia/Kolkata
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 3500);
+          const res = await fetch('https://worldtimeapi.org/api/timezone/Asia/Kolkata', {
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.unixtime) {
+              serverTimestamp = data.unixtime * 1000;
+            } else if (data.datetime) {
+              serverTimestamp = new Date(data.datetime).getTime();
+            }
+          }
+        } catch {
+          // Proceed to backup API
+        }
+
+        // Secondary Backup: TimeAPI.io for Asia/Kolkata
+        if (!serverTimestamp) {
+          try {
+            const controller2 = new AbortController();
+            const timeoutId2 = setTimeout(() => controller2.abort(), 3500);
+            const res2 = await fetch('https://timeapi.io/api/time/current/zone?timeZone=Asia/Kolkata', {
+              signal: controller2.signal
+            });
+            clearTimeout(timeoutId2);
+            if (res2.ok) {
+              const data2 = await res2.json();
+              if (data2.dateTime) {
+                serverTimestamp = new Date(data2.dateTime).getTime();
+              }
+            }
+          } catch {
+            // Local fallback will take over
+          }
+        }
+
+        if (serverTimestamp && isMounted) {
+          baseNetworkTimeMs = serverTimestamp;
+          basePerfNow = performance.now();
+        }
+      } catch (err) {
+        console.warn('Network time sync failed; falling back to device clock:', err);
+      } finally {
+        updateStoreStatus();
+      }
+    };
+
+    syncNetworkTime();
+
+    // Re-check every 30 seconds so status changes automatically without refresh
+    timerId = setInterval(updateStoreStatus, 30000);
+
+    return () => {
+      isMounted = false;
+      if (timerId) clearInterval(timerId);
+    };
+  }, []);
+
   // --- PERSISTENT REACT STATES ---
   const [products, setProducts] = useState(() => {
     try {
       const saved = localStorage.getItem('balaji_react_products');
-      return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.map((item) => {
+          const defaultItem = INITIAL_PRODUCTS.find((p) => p.id === item.id);
+          if (defaultItem && (!item.image || item.image.includes('photo-1581092335397-9583fe92d232'))) {
+            return { ...item, image: defaultItem.image };
+          }
+          return item;
+        });
+      }
+      return INITIAL_PRODUCTS;
     } catch {
       return INITIAL_PRODUCTS;
     }
@@ -428,6 +543,7 @@ export default function App() {
   const [compareList, setCompareList] = useState([]);
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+  const [isZoomedQrOpen, setIsZoomedQrOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
 
   // --- COUPON & CHECKOUT STATES ---
@@ -845,17 +961,56 @@ export default function App() {
   const upiQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
     upiUri
   )}`;
+  const upiQrZoomedUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
+    upiUri
+  )}`;
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800 antialiased selection:bg-red-600 selection:text-white">
+    <div className="min-h-screen w-full overflow-x-hidden flex flex-col bg-slate-50 text-slate-800 antialiased selection:bg-red-600 selection:text-white">
+      {/* Global Full-Bleed Reset overriding Vite's default #root / body constraints */}
+      <style>{`
+        html, body, #root {
+          width: 100% !important;
+          max-width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          min-height: 100vh;
+          overflow-x: hidden;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
+
       {/* ================= TOP ANNOUNCEMENT & LOCATION BAR ================= */}
-      <div className="bg-slate-950 text-slate-300 text-xs py-2 px-4 border-b border-slate-800 print:hidden">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <div className="w-full bg-slate-950 text-slate-300 text-xs py-2 border-b border-slate-800 print:hidden">
+        <div className={`${CONTAINER_CLASS} flex flex-wrap items-center justify-between gap-3`}>
           <div className="flex items-center gap-4 text-[11px] sm:text-xs">
-            <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              Mon–Sat: 9 AM – 9 PM | Sun: 9 AM – 1:30 PM
-            </span>
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border transition-all ${
+                  isStoreOpen
+                    ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/30'
+                    : 'bg-rose-950/80 text-rose-400 border-rose-500/30'
+                }`}
+              >
+                <span
+                  className={`inline-block w-2 h-2 rounded-full ${
+                    isStoreOpen
+                      ? 'bg-emerald-400 animate-pulse'
+                      : 'bg-red-500'
+                  }`}
+                />
+                {isStoreOpen ? 'Open' : 'Closed'}
+              </span>
+              <span className="text-slate-300 font-medium">
+                Mon–Sat: 9 AM – 9 PM | Sun: 9 AM – 1:30 PM
+              </span>
+            </div>
             <span className="hidden md:inline text-slate-700">|</span>
             <span className="hidden md:flex items-center gap-1.5 text-slate-300 font-medium">
               <MapPin className="w-3.5 h-3.5 text-red-500" />
@@ -878,7 +1033,7 @@ export default function App() {
             </a>
             <span className="text-slate-700">|</span>
 
-            {/* Mode Switcher: Shop vs Admin matching screenshot */}
+            {/* Mode Switcher: Shop vs Admin */}
             <div className="flex items-center gap-1 bg-slate-900 px-1.5 py-0.5 rounded-full border border-slate-800">
               <button
                 onClick={() => setActiveMode('customer')}
@@ -906,9 +1061,9 @@ export default function App() {
       </div>
 
       {/* ================= STICKY BRAND HEADER ================= */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs print:hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4">
-          {/* Brand Identity matching exact screenshot */}
+      <header className="sticky top-0 z-30 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs print:hidden">
+        <div className={`${CONTAINER_CLASS} py-3.5 flex items-center justify-between gap-4`}>
+          {/* Brand Identity */}
           <div
             onClick={() => scrollToId('catalogSection')}
             className="flex items-center gap-3.5 cursor-pointer group select-none"
@@ -930,7 +1085,7 @@ export default function App() {
           </div>
 
           {/* Interactive Search Bar Trigger */}
-          <div className="hidden xl:flex flex-1 max-w-sm mx-4">
+          <div className="hidden lg:flex flex-1 max-w-md xl:max-w-lg mx-4">
             <div className="relative w-full">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
@@ -958,11 +1113,11 @@ export default function App() {
             </div>
           </div>
 
-          {/* Header Action Buttons matching screenshot + Load Calculator */}
+          {/* Header Action Buttons */}
           <div className="flex items-center gap-2 sm:gap-3">
             {/* WhatsApp Chat Button */}
             <a
-              href="https://wa.me/919442190934?text=Hello%20Balaji%20Electricals,%20I%20have%20an%20inquiry%20regarding%20electrical%20supplies"
+              href="https://wa.me/919442190934?text=Hello%20Balaji%20Electricals,%20I%20have%20an%20enquiry%20regarding%20electrical%20supplies"
               target="_blank"
               rel="noreferrer"
               className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition"
@@ -987,10 +1142,10 @@ export default function App() {
               title="Smart Electrical Load & Wire Calculator"
             >
               <Calculator className="w-4 h-4 text-amber-600" />
-              <span className="hidden lg:inline">Load Calc</span>
+              <span className="hidden xl:inline">Load Calc</span>
             </button>
 
-            {/* Slide-Out Cart Button matching screenshot */}
+            {/* Slide-Out Cart Button */}
             <button
               onClick={() => setIsCartOpen(true)}
               className="relative px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-red-600 text-white transition flex items-center gap-2"
@@ -1005,9 +1160,9 @@ export default function App() {
         </div>
 
         {/* Category Ribbon Bar */}
-        <nav className="bg-slate-900 text-slate-300 text-xs border-t border-slate-800">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between overflow-x-auto py-2 gap-2 no-scrollbar">
-            <div className="flex items-center gap-1.5 whitespace-nowrap">
+        <nav className="w-full bg-slate-900 text-slate-300 text-xs border-t border-slate-800">
+          <div className={`${CONTAINER_CLASS} flex items-center justify-between overflow-x-auto py-2 gap-2 no-scrollbar`}>
+            <div className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
               {CATEGORIES.map((cat) => (
                 <button
                   key={cat}
@@ -1015,7 +1170,7 @@ export default function App() {
                     setSelectedCategory(cat);
                     scrollToId('catalogSection');
                   }}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition ${
+                  className={`px-3.5 py-1.5 rounded-lg font-semibold transition ${
                     selectedCategory === cat
                       ? 'bg-red-600 text-white shadow-xs'
                       : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -1052,24 +1207,24 @@ export default function App() {
 
       {/* ================= MAIN VIEW SWITCHER ================= */}
       {activeMode === 'customer' ? (
-        <main className="flex-1 print:hidden">
+        <main className="flex-1 w-full print:hidden">
           {/* ================= HERO SECTION ================= */}
-          <section className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white py-10 lg:py-14 px-4 sm:px-6 relative overflow-hidden border-b border-slate-800">
-            <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
-              <div className="lg:col-span-7 space-y-4">
+          <section className="w-full bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white py-10 lg:py-16 border-b border-slate-800 relative overflow-hidden">
+            <div className={`${CONTAINER_CLASS} grid grid-cols-1 lg:grid-cols-12 gap-8 xl:gap-12 items-center relative z-10`}>
+              <div className="lg:col-span-7 space-y-5">
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-600/20 border border-red-500/40 text-red-300 text-xs font-semibold">
                   <ShieldCheck className="w-4 h-4 text-red-400" />
                   <span>Authorized Stockist: Finolex • Schneider • C.R.I. Pumps • Legrand</span>
                 </div>
 
-                <h2 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight">
+                <h2 className="text-3xl sm:text-5xl xl:text-6xl font-black tracking-tight leading-tight">
                   100% Genuine Electricals at{' '}
                   <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-400 via-amber-300 to-amber-500">
                     Kalangani NH-44 Bypass.
                   </span>
                 </h2>
 
-                <p className="text-slate-300 text-xs sm:text-sm max-w-xl leading-relaxed">
+                <p className="text-slate-300 text-xs sm:text-sm xl:text-base max-w-2xl leading-relaxed">
                   Supplying ISI-certified Flame Guard house wires, industrial MCB switchgears, high-head C.R.I. agricultural &amp; domestic pumps, and rigid PVC conduits for homes, poultry farms, and contractors across Namakkal.
                 </p>
 
@@ -1077,7 +1232,7 @@ export default function App() {
                 <div className="flex flex-wrap items-center gap-3 pt-2">
                   <button
                     onClick={() => scrollToId('catalogSection')}
-                    className="px-5 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-lg shadow-red-600/30 flex items-center gap-2 transition transform active:scale-95"
+                    className="px-5 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs sm:text-sm shadow-lg shadow-red-600/30 flex items-center gap-2 transition transform active:scale-95"
                   >
                     <Package className="w-4 h-4" />
                     <span>Explore Store Catalog</span>
@@ -1085,7 +1240,7 @@ export default function App() {
 
                   <button
                     onClick={() => setIsLoadCalcOpen(true)}
-                    className="px-5 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs flex items-center gap-2 transition shadow-md"
+                    className="px-5 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs sm:text-sm flex items-center gap-2 transition shadow-md"
                   >
                     <Calculator className="w-4 h-4" />
                     <span>Smart Wire &amp; Load Calculator</span>
@@ -1093,7 +1248,7 @@ export default function App() {
 
                   <button
                     onClick={() => scrollToId('locationSection')}
-                    className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 transition"
+                    className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold text-xs sm:text-sm flex items-center gap-1.5 transition"
                   >
                     <MapPin className="w-4 h-4 text-red-400" />
                     <span>Store Map</span>
@@ -1102,19 +1257,19 @@ export default function App() {
 
                 {/* Key Highlights */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-5 border-t border-slate-800/80 text-xs">
-                  <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
+                  <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
                     <span className="text-amber-400 font-extrabold block">Free Delivery</span>
                     <span className="text-[11px] text-slate-400">Orders &gt; ₹10,000 (5 km)</span>
                   </div>
-                  <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
+                  <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
                     <span className="text-emerald-400 font-extrabold block">GST Billing</span>
                     <span className="text-[11px] text-slate-400">33BIBPR8021G1ZH</span>
                   </div>
-                  <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
+                  <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
                     <span className="text-red-400 font-extrabold block">Direct UPI Pay</span>
                     <span className="text-[11px] text-slate-400">Instant QR Checkout</span>
                   </div>
-                  <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
+                  <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
                     <span className="text-blue-400 font-extrabold block">On-Call Wiremen</span>
                     <span className="text-[11px] text-slate-400">Doorstep Installation</span>
                   </div>
@@ -1123,13 +1278,13 @@ export default function App() {
 
               {/* Right Hero Card: Quick Store Dispatch & WhatsApp List */}
               <div className="lg:col-span-5">
-                <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+                <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-6 xl:p-7 shadow-2xl space-y-4">
                   <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                     <div>
                       <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-400">
                         Express Counter &amp; Van Dispatch
                       </span>
-                      <h3 className="text-base font-bold text-white mt-0.5">
+                      <h3 className="text-base sm:text-lg font-bold text-white mt-0.5">
                         Balaji Electricals — Kalangani
                       </h3>
                     </div>
@@ -1153,11 +1308,22 @@ export default function App() {
                     </div>
                     <div className="flex items-center gap-2.5">
                       <Clock className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                      <span>Mon – Sat: 9:00 AM – 9:00 PM | Sun: Half Day</span>
+                      <div className="flex items-center gap-2">
+                        <span>Mon – Sat: 9:00 AM – 9:00 PM | Sun: Half Day</span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                            isStoreOpen
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                              : 'bg-red-500/10 text-red-400 border-red-500/30'
+                          }`}
+                        >
+                          {isStoreOpen ? 'Open Now' : 'Closed Now'}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5">
                     <div className="text-xs font-bold text-white flex items-center gap-1.5">
                       <Sparkles className="w-4 h-4 text-amber-400" />
                       <span>Have a handwritten electrician material slip?</span>
@@ -1181,8 +1347,8 @@ export default function App() {
           </section>
 
           {/* ================= AUTHORIZED BRANDS RIBBON ================= */}
-          <section className="bg-white border-b border-slate-200 py-4 px-4">
-            <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+          <section className="w-full bg-white border-b border-slate-200 py-4">
+            <div className={`${CONTAINER_CLASS} flex flex-wrap items-center justify-between gap-4`}>
               <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
                 Click Brand to Filter:
               </span>
@@ -1191,7 +1357,7 @@ export default function App() {
                   <button
                     key={brand}
                     onClick={() => setSelectedBrand(brand)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition border ${
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition border ${
                       selectedBrand === brand
                         ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-red-600 hover:text-red-600'
@@ -1205,9 +1371,9 @@ export default function App() {
           </section>
 
           {/* ================= PRODUCT CATALOG SECTION ================= */}
-          <section id="catalogSection" className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
+          <section id="catalogSection" className={`${CONTAINER_CLASS} py-10`}>
             {/* Filter Controls Bar */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs mb-8 space-y-4">
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs mb-8 space-y-4">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-xl sm:text-2xl font-black text-slate-900">
@@ -1325,7 +1491,7 @@ export default function App() {
               )}
             </div>
 
-            {/* Product Grid */}
+            {/* Product Grid - Responsive across Mobile, Laptop, Monitor & TV */}
             {filteredProducts.length === 0 ? (
               <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-3">
                 <Package className="w-12 h-12 text-slate-300 mx-auto" />
@@ -1348,7 +1514,7 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-5">
                 {filteredProducts.map((item) => {
                   const displayPrice = bulkPricingMode ? item.bulkPrice : item.price;
                   const discountPct = Math.round(
@@ -1368,6 +1534,10 @@ export default function App() {
                           <img
                             src={item.image}
                             alt={item.name}
+                            onError={(e) => {
+                              e.currentTarget.onerror = null;
+                              e.currentTarget.src = 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80';
+                            }}
                             onClick={() => setQuickViewProduct(item)}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 cursor-pointer"
                           />
@@ -1496,9 +1666,9 @@ export default function App() {
           {/* ================= ON-DEMAND ELECTRICIAN BOOKING SECTION ================= */}
           <section
             id="electricianSection"
-            className="bg-slate-900 text-white py-14 px-4 sm:px-6 border-t border-slate-800"
+            className="w-full bg-slate-900 text-white py-14 border-t border-slate-800"
           >
-            <div className="max-w-7xl mx-auto">
+            <div className={CONTAINER_CLASS}>
               <div className="text-center max-w-2xl mx-auto mb-10">
                 <span className="text-xs font-extrabold uppercase tracking-widest text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
                   Doorstep Technical Support
@@ -1690,7 +1860,7 @@ export default function App() {
           </section>
 
           {/* ================= STORE LOCATION & GOOGLE MAPS SECTION ================= */}
-          <section id="locationSection" className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
+          <section id="locationSection" className={`${CONTAINER_CLASS} py-12`}>
             <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden grid grid-cols-1 lg:grid-cols-12">
               <div className="p-6 sm:p-8 lg:col-span-5 flex flex-col justify-between space-y-6">
                 <div className="space-y-3">
@@ -1767,11 +1937,11 @@ export default function App() {
                 </a>
               </div>
 
-              <div className="lg:col-span-7 min-h-[340px] bg-slate-100">
+              <div className="lg:col-span-7 min-h-[360px] bg-slate-100">
                 <iframe
                   title="Balaji Electricals Kalangani Namakkal Map"
                   src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d15654.55106192138!2d78.1400!3d11.2800!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3babb0c910243bc3%3A0x6bfa3e8519a844!2sKalangani%2C%20Tamil%20Nadu!5e0!3m2!1sen!2sin!4v1700000000000!5m2!1sen!2sin"
-                  className="w-full h-full min-h-[340px] border-0"
+                  className="w-full h-full min-h-[360px] border-0"
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
                 />
@@ -1781,7 +1951,7 @@ export default function App() {
         </main>
       ) : (
         /* ================= STORE MANAGER ADMIN CONSOLE ================= */
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 space-y-8 print:hidden">
+        <main className={`flex-1 ${CONTAINER_CLASS} py-8 space-y-8 print:hidden`}>
           <div className="bg-slate-900 text-white p-6 rounded-2xl flex flex-wrap items-center justify-between gap-4">
             <div>
               <span className="text-xs font-extrabold uppercase tracking-wider text-amber-400">
@@ -2141,6 +2311,10 @@ export default function App() {
                 <img
                   src={quickViewProduct.image}
                   alt={quickViewProduct.name}
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80';
+                  }}
                   className="w-full h-64 object-cover rounded-2xl border border-slate-200"
                 />
                 <div className="grid grid-cols-2 gap-2 mt-3 text-[11px]">
@@ -2409,6 +2583,10 @@ export default function App() {
                       <img
                         src={item.image}
                         alt={item.name}
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80';
+                        }}
                         className="w-12 h-12 rounded-lg object-cover border border-slate-200"
                       />
                       <div className="flex-1 min-w-0">
@@ -2656,11 +2834,14 @@ export default function App() {
 
               {/* Tax Breakdown & UPI QR */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t-2 border-slate-900 items-center">
-                <div className="flex items-center gap-3 bg-red-50/70 p-3 rounded-xl border border-red-200">
+                <div
+                  onClick={() => setIsZoomedQrOpen(true)}
+                  className="flex items-center gap-3 bg-red-50/70 p-3 rounded-xl border border-red-200 cursor-pointer hover:border-red-400 hover:shadow-md transition group select-none"
+                >
                   <img
                     src={upiQrUrl}
                     alt="Balaji Electricals UPI QR"
-                    className="w-24 h-24 rounded-lg border border-slate-300 bg-white p-1"
+                    className="w-24 h-24 rounded-lg border border-slate-300 bg-white p-1 group-hover:scale-105 transition-transform"
                   />
                   <div className="space-y-1 text-[11px]">
                     <span className="px-2 py-0.5 rounded bg-emerald-600 text-white font-bold text-[9px] uppercase">
@@ -2718,9 +2899,80 @@ export default function App() {
         </div>
       )}
 
+      {/* ================= ZOOMED UPI QR CODE MODAL ================= */}
+      {isZoomedQrOpen && (
+        <div
+          className="fixed inset-0 z-60 z-[60] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 print:hidden animate-in fade-in duration-200"
+          onClick={() => setIsZoomedQrOpen(false)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-sm w-full shadow-2xl border border-slate-200 p-6 text-center space-y-5 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button
+              onClick={() => setIsZoomedQrOpen(false)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Header */}
+            <div className="space-y-1">
+              <span className="px-3 py-1 rounded-full bg-red-50 text-red-700 font-extrabold text-[10px] uppercase tracking-wider border border-red-200 inline-block">
+                Instant UPI Payment
+              </span>
+              <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                BALAJI ELECTRICALS
+              </h3>
+              <p className="text-xs text-slate-500">
+                Scan with any UPI app on your phone
+              </p>
+            </div>
+
+            {/* High-Resolution QR Code */}
+            <div className="p-3 bg-white rounded-2xl border-2 border-slate-200 shadow-inner inline-block">
+              <img
+                src={upiQrZoomedUrl}
+                alt="Balaji Electricals Large UPI QR Code"
+                className="w-64 h-64 mx-auto rounded-xl"
+              />
+            </div>
+
+            {/* Payment Summary */}
+            <div className="space-y-2 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-left">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500 font-medium">Net Payable:</span>
+                <span className="text-lg font-black text-red-600 font-mono">
+                  ₹{cartMetrics.grandTotal.toLocaleString('en-IN')}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-200">
+                <span className="text-slate-500 font-medium">UPI ID:</span>
+                <span className="font-mono font-bold text-slate-800 select-all">
+                  praveenonline17@okicici
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-400 font-medium text-center pt-0.5">
+                Supported: Google Pay • PhonePe • Paytm • BHIM • CRED
+              </div>
+            </div>
+
+            {/* Close / Back to Invoice Action */}
+            <button
+              onClick={() => setIsZoomedQrOpen(false)}
+              className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-md transition"
+            >
+              Close / Back to Invoice
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ================= FOOTER ================= */}
-      <footer className="bg-slate-950 text-slate-400 text-xs border-t border-slate-800 mt-auto print:hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-1 md:grid-cols-4 gap-8">
+      <footer className="w-full bg-slate-950 text-slate-400 text-xs border-t border-slate-800 mt-auto print:hidden">
+        <div className={`${CONTAINER_CLASS} py-10 grid grid-cols-1 md:grid-cols-4 gap-8`}>
           <div className="space-y-3">
             <div className="flex items-center gap-2.5">
               <BalajiLogo />
@@ -2760,7 +3012,7 @@ export default function App() {
               </li>
               <li>Same-Day Site Dispatch across Namakkal</li>
               <li>UPI ID: praveenonline17@okicici</li>
-              <li> Mon–Sat: 9:00 AM – 9:00 PM | Sun: Half Day</li>
+              <li>Mon–Sat: 9:00 AM – 9:00 PM | Sun: Half Day</li>
             </ul>
           </div>
 
