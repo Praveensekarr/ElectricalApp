@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import * as api from './api';
+import { describeError, tokenStore, AUTH_EXPIRED_EVENT } from './api';
+import { fmt, formatInvoiceDate, newRequestId } from './utils/format';
+import AdminLoginModal from './components/AdminLoginModal';
+import ProductEditModal from './components/ProductEditModal';
+import AdminOrdersPanel from './components/AdminOrdersPanel';
 import {
   Search,
   ShoppingCart,
@@ -41,262 +47,7 @@ import {
   Star
 } from 'lucide-react';
 
-// --- INITIAL AUTHORIZED PRODUCT CATALOG ---
-const INITIAL_PRODUCTS = [
-  {
-    id: 'BE-101',
-    name: 'Finolex Flame Guard FRLS 1.5 sq mm House Wire (90m)',
-    brand: 'Finolex Cables',
-    category: 'House Wiring & Cables',
-    price: 1850,
-    mrp: 2290,
-    bulkPrice: 1760,
-    bulkMinQty: 5,
-    stock: 48,
-    rating: 4.9,
-    reviews: 164,
-    badge: 'Best Seller',
-    isiCode: 'IS 694:2010',
-    voltageGrade: '1100V',
-    warranty: 'Lifetime Copper Purity Guarantee',
-    specs: '1.5 sq.mm • 90m Coil • 100% Electrolytic Copper • Flame Retardant Low Smoke',
-    description: 'Genuine Finolex Flame Guard FRLS insulated house wire engineered with 99.97% pure electrolytic grade bright annealed bare copper. Ideal for domestic lighting, fans, and switchboard interconnections.',
-    application: 'Recommended for up to 12A continuous load (LED lighting, ceiling fans, TV sockets).',
-    image: 'https://images.unsplash.com/photo-1544724569-5f546fd6f2b5?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 'BE-102',
-    name: 'Finolex Flame Guard FRLS 2.5 sq mm Power Wire (90m)',
-    brand: 'Finolex Cables',
-    category: 'House Wiring & Cables',
-    price: 2950,
-    mrp: 3580,
-    bulkPrice: 2820,
-    bulkMinQty: 5,
-    stock: 35,
-    rating: 4.9,
-    reviews: 128,
-    badge: 'Heavy Duty',
-    isiCode: 'IS 694:2010',
-    voltageGrade: '1100V',
-    warranty: 'Lifetime Copper Purity Guarantee',
-    specs: '2.5 sq.mm • 90m Coil • Multi-Strand Flexible Copper • Thermal Stability',
-    description: 'High-current carrying Finolex 2.5 sq.mm cable designed for 16A power circuits, 1.5 Ton Split ACs, bathroom water heaters (geysers), and heavy kitchen appliances.',
-    application: 'Pair with a 16A or 20A Schneider C-Curve MCB for optimum circuit safety.',
-    image: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 'BE-103',
-    name: 'Finolex 4.0 sq mm 3-Core Submersible Flat Cable (Per Meter)',
-    brand: 'Finolex Cables',
-    category: 'House Wiring & Cables',
-    price: 138,
-    mrp: 175,
-    bulkPrice: 128,
-    bulkMinQty: 50,
-    stock: 400,
-    rating: 5.0,
-    reviews: 92,
-    badge: 'Farm & Borewell',
-    isiCode: 'IS 694',
-    voltageGrade: '1100V Submersible',
-    warranty: '5 Years Manufacturer Warranty',
-    specs: '4.0 sq.mm • 3-Core Flat • Oil, Abrasion & Moisture Resistant PVC Sheath',
-    description: 'Specially formulated waterproof double-sheathed flat cable for deep-well agricultural submersible pump motors in Kalangani and Namakkal farms.',
-    application: 'Direct underwater coupling from borewell motor leads to starter panel.',
-    image: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 'BE-104',
-    name: 'Schneider Electric Easy9 32A Double Pole (DP) MCB Isolator',
-    brand: 'Schneider Electric',
-    category: 'Switchgear & MCBs',
-    price: 490,
-    mrp: 650,
-    bulkPrice: 455,
-    bulkMinQty: 10,
-    stock: 60,
-    rating: 4.8,
-    reviews: 87,
-    badge: '10kA Breaking',
-    isiCode: 'IS/IEC 60898-1',
-    voltageGrade: '240V / 415V AC',
-    warranty: '2 Years Replacement Warranty',
-    specs: '32A • Double Pole • C-Curve • 10kA Short Circuit Rating • DIN Rail',
-    description: 'Schneider Electric Easy9 main incoming DP breaker with rapid magnetic trip mechanism and bi-connect terminals for simultaneous phase and neutral isolation.',
-    application: 'Install as main incoming switch inside residential or commercial DB boxes.',
-    image: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 'BE-105',
-    name: 'Schneider Acti9 16A Single Pole C-Curve MCB',
-    brand: 'Schneider Electric',
-    category: 'Switchgear & MCBs',
-    price: 195,
-    mrp: 265,
-    bulkPrice: 178,
-    bulkMinQty: 12,
-    stock: 140,
-    rating: 4.9,
-    reviews: 112,
-    badge: 'Contractor Choice',
-    isiCode: 'IS/IEC 60898-1',
-    voltageGrade: '240V AC',
-    warranty: '2 Years Warranty',
-    specs: '16A • Single Pole • C-Curve • VisiTrip Fault Indicator • 10kA',
-    description: 'Precision overload and short-circuit protection for individual room sub-circuits, geysers, and air conditioners.',
-    application: 'Snap onto standard 35mm DIN rail inside distribution boards.',
-    image: 'https://images.unsplash.com/photo-1562034037-ba96b6312a80?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 'BE-106',
-    name: 'C.R.I. 1.0 HP Self-Priming Monoblock Pump (Copper Winding)',
-    brand: 'C.R.I. Pumps',
-    category: 'Fans & Appliances',
-    price: 8450,
-    mrp: 10200,
-    bulkPrice: 8100,
-    bulkMinQty: 2,
-    stock: 14,
-    rating: 5.0,
-    reviews: 95,
-    badge: 'C.R.I. Authorized',
-    isiCode: 'IS 8472',
-    voltageGrade: '180V - 240V Single Phase',
-    warranty: '1 Year On-Site C.R.I. Warranty',
-    specs: '1.0 HP (0.75 kW) • 25x25mm Suction/Delivery • 42m Max Head • Thermal Overload Protector',
-    description: 'High-efficiency C.R.I. regenerative self-priming pump built with 100% EC grade copper winding and anti-corrosive stainless steel shaft. Built for overhead tank filling and garden irrigation.',
-    application: 'Connect with a 16A motor starter switch and 2.5 sq.mm Finolex supply line.',
-    image: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 'BE-107',
-    name: 'Legrand Mylinc 6A 1-Way Modular Switch (Glossy White)',
-    brand: 'Legrand',
-    category: 'Modular Switches & Sockets',
-    price: 82,
-    mrp: 112,
-    bulkPrice: 72,
-    bulkMinQty: 20,
-    stock: 250,
-    rating: 4.8,
-    reviews: 143,
-    badge: 'Zero Spark',
-    isiCode: 'IS 3854',
-    voltageGrade: '240V AC',
-    warranty: '10 Years Mechanism Warranty',
-    specs: '6A • 1 Module • Silver Nickel Contacts • Flame Retardant Polycarbonate',
-    description: 'Ergonomic soft-click modular switch from Legrand Mylinc series featuring captive screws, laser-marked ratings, and UV-stabilized pure white finish.',
-    application: 'Fits Legrand Mylinc modular plates for bedrooms, halls, and offices.',
-    image: 'https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 'BE-108',
-    name: 'Philips 20W Astra Line LED Batten Tube Light (6500K Cool Day)',
-    brand: 'Philips',
-    category: 'LED & Decorative Lighting',
-    price: 320,
-    mrp: 499,
-    bulkPrice: 290,
-    bulkMinQty: 10,
-    stock: 85,
-    rating: 4.8,
-    reviews: 109,
-    badge: 'EyeComfort',
-    isiCode: 'IS 10322',
-    voltageGrade: '140V - 280V Wide Voltage',
-    warranty: '2 Years Counter Replacement',
-    specs: '20W • 2000 Lumens • 4 feet • 4kV Built-in Surge Protection',
-    description: 'Ultra-bright Philips LED batten engineered with glare-free polycarbonate diffuser and high-surge driver suitable for rural and highway voltage fluctuations.',
-    application: 'Direct wall or ceiling clip mounting with 2-core supply.',
-    image: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 'BE-109',
-    name: 'Crompton Energion 1200mm BLDC Energy Saving Ceiling Fan',
-    brand: 'Crompton',
-    category: 'Fans & Appliances',
-    price: 3390,
-    mrp: 4590,
-    bulkPrice: 3200,
-    bulkMinQty: 4,
-    stock: 22,
-    rating: 4.9,
-    reviews: 88,
-    badge: '5-Star BEE (28W)',
-    isiCode: 'IS 374',
-    voltageGrade: '90V - 300V AC',
-    warranty: '5 Years Motor Warranty',
-    specs: '28W ActivBLDC • 370 RPM • 220 CMM Air Delivery • RF Smart Remote',
-    description: 'Saves up to ₹1,500/year per fan on electricity bills. Runs smoothly on inverter battery twice as long as conventional induction fans.',
-    application: 'Includes downrod, canopies, shackle kit, and point-anywhere remote.',
-    image: 'https://images.unsplash.com/photo-1567016432779-094069958ea5?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 'BE-110',
-    name: 'Finolex 25mm Heavy Duty Rigid PVC Electrical Conduit Pipe (3m)',
-    brand: 'Finolex Pipes',
-    category: 'Pipes & Conduits',
-    price: 110,
-    mrp: 145,
-    bulkPrice: 98,
-    bulkMinQty: 25,
-    stock: 320,
-    rating: 4.9,
-    reviews: 67,
-    badge: 'Slab Grade HMS',
-    isiCode: 'IS 9537 Part 3',
-    voltageGrade: 'High Dielectric Insulation',
-    warranty: 'ISI Certified Crush Proof',
-    specs: '25mm OD • 3 Meter Length • Heavy Mechanical Stress (HMS) Black/Grey',
-    description: 'Unplasticized rigid PVC conduit pipe engineered to withstand heavy concrete pouring pressure during roof slab casting and concealed wall channelling.',
-    application: 'Use with Finolex 25mm deep junction boxes, bends, and solvent cement.',
-    image: 'https://images.unsplash.com/photo-1504148455328-c376907d081c?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 'BE-111',
-    name: 'Digital Clamp Meter & Heavy Duty Insulated Electrician Tool Kit',
-    brand: 'Schneider Electric',
-    category: 'Tools & Safety Gear',
-    price: 1290,
-    mrp: 1690,
-    bulkPrice: 1180,
-    bulkMinQty: 3,
-    stock: 18,
-    rating: 4.7,
-    reviews: 41,
-    badge: '1000V Insulated',
-    isiCode: 'IEC 61010',
-    voltageGrade: 'Up to 1000V AC/DC',
-    warranty: '1 Year Warranty',
-    specs: '600A AC Clamp • Continuity Buzzer • 8-in-1 Insulated Plier & Tester Set',
-    description: 'Complete field testing and safety maintenance kit for wiremen, pump technicians, and industrial maintenance engineers.',
-    application: 'Essential for troubleshooting motor current draw and neutral earth faults.',
-    image: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80'
-  }
-];
 
-const CATEGORIES = [
-  'All Categories',
-  'House Wiring & Cables',
-  'Switchgear & MCBs',
-  'Modular Switches & Sockets',
-  'LED & Decorative Lighting',
-  'Fans & Appliances',
-  'Pipes & Conduits',
-  'Tools & Safety Gear'
-];
-
-const BRANDS = [
-  'All',
-  'Finolex Cables',
-  'Schneider Electric',
-  'C.R.I. Pumps',
-  'Finolex Pipes',
-  'Legrand',
-  'Philips',
-  'Crompton'
-];
 
 const ELECTRICIAN_SERVICES = [
   {
@@ -378,135 +129,39 @@ const BalajiLogo = ({ size = 'md' }) => {
   );
 };
 
-// Calculate whether the store is currently open based on Indian Standard Time (UTC+05:30)
-// Store Hours: Monday to Saturday from 9:00 AM to 9:00 PM, Sunday from 9:00 AM to 1:30 PM
-const checkStoreOpenIST = (epochMs) => {
-  const istMs = epochMs + (5 * 60 + 30) * 60 * 1000;
-  const istDate = new Date(istMs);
-  const day = istDate.getUTCDay(); // 0 = Sunday, 1-6 = Monday to Saturday
-  const minutes = istDate.getUTCHours() * 60 + istDate.getUTCMinutes();
-
-  if (day === 0) {
-    // Sunday: 9:00 AM (540 mins) to 1:30 PM (810 mins)
-    return minutes >= 540 && minutes < 810;
-  }
-  // Monday to Saturday: 9:00 AM (540 mins) to 9:00 PM (1260 mins)
-  return minutes >= 540 && minutes < 1260;
-};
-
 // Fluid full-width container class for all screen sizes (Mobile, Laptop, Full HD & 4K TV)
 const CONTAINER_CLASS = 'w-full px-4 sm:px-6';
 
 export default function App() {
-  // --- DYNAMIC STORE OPEN / CLOSED STATUS (IST & Public Time API Sync) ---
-  const [isStoreOpen, setIsStoreOpen] = useState(() => checkStoreOpenIST(Date.now()));
+  // --- STORE OPEN / CLOSED STATUS (decided by the server in IST) ---
+  const [storeStatus, setStoreStatus] = useState(null);
+  const isStoreOpen = storeStatus ? storeStatus.isOpen : false;
 
   useEffect(() => {
-    let isMounted = true;
-    let timerId = null;
-
-    // Baseline network time synced with browser monotonic clock (performance.now)
-    let baseNetworkTimeMs = null;
-    let basePerfNow = null;
-
-    const getAccurateNow = () => {
-      if (baseNetworkTimeMs !== null && basePerfNow !== null) {
-        return baseNetworkTimeMs + (performance.now() - basePerfNow);
-      }
-      return Date.now();
-    };
-
-    const updateStoreStatus = () => {
-      if (!isMounted) return;
-      const currentMs = getAccurateNow();
-      setIsStoreOpen(checkStoreOpenIST(currentMs));
-    };
-
-    const syncNetworkTime = async () => {
+    let alive = true;
+    const load = async () => {
       try {
-        let serverTimestamp = null;
-
-        // Primary: WorldTimeAPI for Asia/Kolkata
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 3500);
-          const res = await fetch('https://worldtimeapi.org/api/timezone/Asia/Kolkata', {
-            signal: controller.signal
-          });
-          clearTimeout(timeoutId);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.unixtime) {
-              serverTimestamp = data.unixtime * 1000;
-            } else if (data.datetime) {
-              serverTimestamp = new Date(data.datetime).getTime();
-            }
-          }
-        } catch {
-          // Proceed to backup API
-        }
-
-        // Secondary Backup: TimeAPI.io for Asia/Kolkata
-        if (!serverTimestamp) {
-          try {
-            const controller2 = new AbortController();
-            const timeoutId2 = setTimeout(() => controller2.abort(), 3500);
-            const res2 = await fetch('https://timeapi.io/api/time/current/zone?timeZone=Asia/Kolkata', {
-              signal: controller2.signal
-            });
-            clearTimeout(timeoutId2);
-            if (res2.ok) {
-              const data2 = await res2.json();
-              if (data2.dateTime) {
-                serverTimestamp = new Date(data2.dateTime).getTime();
-              }
-            }
-          } catch {
-            // Local fallback will take over
-          }
-        }
-
-        if (serverTimestamp && isMounted) {
-          baseNetworkTimeMs = serverTimestamp;
-          basePerfNow = performance.now();
-        }
-      } catch (err) {
-        console.warn('Network time sync failed; falling back to device clock:', err);
-      } finally {
-        updateStoreStatus();
+        const status = await api.getStoreStatus();
+        if (alive) setStoreStatus(status);
+      } catch {
+        /* keep the last known status; the next poll will retry */
       }
     };
-
-    syncNetworkTime();
-
-    // Re-check every 30 seconds so status changes automatically without refresh
-    timerId = setInterval(updateStoreStatus, 30000);
-
+    load();
+    const timerId = setInterval(load, 30000);
     return () => {
-      isMounted = false;
-      if (timerId) clearInterval(timerId);
+      alive = false;
+      clearInterval(timerId);
     };
   }, []);
 
   // --- PERSISTENT REACT STATES ---
-  const [products, setProducts] = useState(() => {
-    try {
-      const saved = localStorage.getItem('balaji_react_products');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.map((item) => {
-          const defaultItem = INITIAL_PRODUCTS.find((p) => p.id === item.id);
-          if (defaultItem && (!item.image || item.image.includes('photo-1581092335397-9583fe92d232'))) {
-            return { ...item, image: defaultItem.image };
-          }
-          return item;
-        });
-      }
-      return INITIAL_PRODUCTS;
-    } catch {
-      return INITIAL_PRODUCTS;
-    }
-  });
+  const [products, setProducts] = useState([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState('');
+  const [catalogReload, setCatalogReload] = useState(0);
+  const [categoryNames, setCategoryNames] = useState([]);
+  const [brandNames, setBrandNames] = useState([]);
 
   const [cart, setCart] = useState(() => {
     try {
@@ -534,7 +189,6 @@ export default function App() {
   const [maxPrice, setMaxPrice] = useState(12000);
   const [inStockOnly, setInStockOnly] = useState(false);
   const [sortBy, setSortBy] = useState('popular');
-  const [bulkPricingMode, setBulkPricingMode] = useState(false);
 
   // --- INTERACTIVE DRAWERS & MODALS ---
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -548,7 +202,14 @@ export default function App() {
 
   // --- COUPON & CHECKOUT STATES ---
   const [couponInput, setCouponInput] = useState('');
-  const [appliedDiscountPct, setAppliedDiscountPct] = useState(0);
+  const [appliedCoupon, setAppliedCoupon] = useState('');
+  const [quote, setQuote] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState('');
+  const [placedOrder, setPlacedOrder] = useState(null);
+  const [placing, setPlacing] = useState(false);
+  const [placeError, setPlaceError] = useState('');
+  const requestIdRef = useRef(null);
   const [buyerDetails, setBuyerDetails] = useState({
     name: '',
     phone: '',
@@ -590,6 +251,14 @@ export default function App() {
     specs: ''
   });
 
+  // --- ADMIN SESSION & INVENTORY (server data; JWT kept by the API layer) ---
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [adminProducts, setAdminProducts] = useState([]);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState('');
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [savingSku, setSavingSku] = useState(false);
+
   // --- TOAST NOTIFICATIONS ---
   const [toasts, setToasts] = useState([]);
   const addToast = (message, type = 'success') => {
@@ -600,11 +269,7 @@ export default function App() {
     }, 3200);
   };
 
-  // --- SYNC LOCALSTORAGE ---
-  useEffect(() => {
-    localStorage.setItem('balaji_react_products', JSON.stringify(products));
-  }, [products]);
-
+  // --- SYNC LOCALSTORAGE (cart & wishlist only; the catalogue lives on the server) ---
   useEffect(() => {
     localStorage.setItem('balaji_react_cart', JSON.stringify(cart));
   }, [cart]);
@@ -629,35 +294,52 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // --- FILTERED & SORTED PRODUCTS ---
-  const filteredProducts = useMemo(() => {
-    return products
-      .filter((item) => {
-        const matchCat =
-          selectedCategory === 'All Categories' || item.category === selectedCategory;
-        const matchBrand =
-          selectedBrand === 'All' ||
-          item.brand.toLowerCase().includes(selectedBrand.toLowerCase());
-        const matchSearch =
-          item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.specs.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.id.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchPrice = item.price <= maxPrice;
-        const matchStock = !inStockOnly || item.stock > 0;
-        return matchCat && matchBrand && matchSearch && matchPrice && matchStock;
+  // --- CATALOGUE FROM THE API (filtering, search and sorting are done by the server) ---
+  const filteredProducts = products;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setCatalogLoading(true);
+      setCatalogError('');
+      try {
+        const list = await api.getProducts(
+          {
+            category: selectedCategory === 'All Categories' ? undefined : selectedCategory,
+            brand: selectedBrand === 'All' ? undefined : selectedBrand,
+            q: searchQuery.trim() || undefined,
+            maxPrice,
+            inStockOnly: inStockOnly || undefined,
+            sort: sortBy
+          },
+          controller.signal
+        );
+        setProducts(list);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setCatalogError(describeError(err));
+      } finally {
+        if (!controller.signal.aborted) setCatalogLoading(false);
+      }
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [selectedCategory, selectedBrand, searchQuery, maxPrice, inStockOnly, sortBy, catalogReload]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    Promise.all([api.getCategories(controller.signal), api.getBrands(controller.signal)])
+      .then(([cats, brands]) => {
+        setCategoryNames(cats);
+        setBrandNames(brands);
       })
-      .sort((a, b) => {
-        if (sortBy === 'price-asc') return a.price - b.price;
-        if (sortBy === 'price-desc') return b.price - a.price;
-        if (sortBy === 'discount') {
-          const discA = (a.mrp - a.price) / a.mrp;
-          const discB = (b.mrp - b.price) / b.mrp;
-          return discB - discA;
-        }
-        return b.rating * b.reviews - a.rating * a.reviews;
+      .catch(() => {
+        /* the catalogue effect above already reports connectivity problems */
       });
-  }, [products, selectedCategory, selectedBrand, searchQuery, maxPrice, inStockOnly, sortBy]);
+    return () => controller.abort();
+  }, [catalogReload]);
 
   // --- CART OPERATIONS ---
   const addToCart = (product, qty = 1) => {
@@ -694,61 +376,103 @@ export default function App() {
     );
   };
 
+  // Every price, discount and tax figure below comes from POST /api/orders/quote (or, once an invoice has been
+  // generated, from the saved order). The browser only displays them - it never works out a price itself.
+  const pricing = placedOrder ? placedOrder.pricing : quote;
+
+  const lineByProduct = useMemo(() => {
+    const map = {};
+    ((pricing && pricing.lines) || []).forEach((line) => {
+      map[line.productId] = line;
+    });
+    return map;
+  }, [pricing]);
+
   const getEffectiveUnitPrice = (item) => {
-    if (bulkPricingMode || item.qty >= (item.bulkMinQty || 5)) {
-      return item.bulkPrice || Math.round(item.price * 0.95);
-    }
-    return item.price;
+    const line = lineByProduct[item.id];
+    return line ? Number(line.unitPrice) : Number(item.price);
   };
 
   const cartMetrics = useMemo(() => {
+    const num = (v) => (v === null || v === undefined ? 0 : Number(v));
     const totalItems = cart.reduce((acc, item) => acc + item.qty, 0);
-    const rawSubtotal = cart.reduce(
-      (acc, item) => acc + getEffectiveUnitPrice(item) * item.qty,
-      0
-    );
-    const mrpTotal = cart.reduce((acc, item) => acc + item.mrp * item.qty, 0);
-    const couponDiscount = Math.round((rawSubtotal * appliedDiscountPct) / 100);
-    const grandTotal = rawSubtotal - couponDiscount;
-    const taxableValue = Math.round(grandTotal / 1.18);
-    const totalGst = grandTotal - taxableValue;
-    const cgst = Math.round(totalGst / 2);
-    const sgst = totalGst - cgst;
-    const totalSavings = mrpTotal - grandTotal;
-    const freeDeliveryThreshold = 10000;
-    const deliveryProgress = Math.min(
-      100,
-      Math.round((grandTotal / freeDeliveryThreshold) * 100)
-    );
-
+    const grandTotal = num(pricing && pricing.grandTotal);
+    const freeDeliveryThreshold = num(pricing && pricing.freeDeliveryThreshold) || 10000;
     return {
       totalItems,
-      rawSubtotal,
-      couponDiscount,
+      rawSubtotal: num(pricing && pricing.subtotal),
+      couponDiscount: num(pricing && pricing.couponDiscount),
+      couponPercent: num(pricing && pricing.couponPercent),
       grandTotal,
-      taxableValue,
-      cgst,
-      sgst,
-      totalSavings,
+      taxableValue: num(pricing && pricing.taxableValue),
+      cgst: num(pricing && pricing.cgst),
+      sgst: num(pricing && pricing.sgst),
+      igst: num(pricing && pricing.igst),
+      gstTotal: Number((num(pricing && pricing.cgst) + num(pricing && pricing.sgst) + num(pricing && pricing.igst)).toFixed(2)),
+      totalSavings: num(pricing && pricing.totalSavings),
       freeDeliveryThreshold,
-      deliveryProgress,
-      isFreeDelivery: grandTotal >= freeDeliveryThreshold
+      deliveryProgress: Math.min(100, Math.round((grandTotal / freeDeliveryThreshold) * 100)), // progress-bar width only
+      isFreeDelivery: Boolean(pricing && pricing.freeDelivery)
     };
-  }, [cart, appliedDiscountPct, bulkPricingMode]);
+  }, [cart, pricing]);
+
+  // Ask the server to price the basket whenever it, the coupon or a (complete) buyer GSTIN changes.
+  const cartKey = cart.map((item) => `${item.id}:${item.qty}`).join(',');
+  const quoteGstin = buyerDetails.gstin.trim().length === 15 ? buyerDetails.gstin.trim() : '';
+
+  useEffect(() => {
+    if (cart.length === 0) {
+      setQuote(null);
+      setQuoteError('');
+      setQuoteLoading(false);
+      return undefined;
+    }
+    const controller = new AbortController();
+    setQuoteLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const result = await api.quoteCart(
+          {
+            items: cart.map((item) => ({ productId: item.id, qty: item.qty })),
+            couponCode: appliedCoupon,
+            buyerGstin: quoteGstin
+          },
+          controller.signal
+        );
+        setQuote(result);
+        setQuoteError('');
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        if (err.code === 'COUPON_MIN_ORDER' || err.code === 'INVALID_COUPON') {
+          addToast(describeError(err), 'error');
+          setAppliedCoupon(''); // the effect re-runs and prices the basket without the coupon
+          return;
+        }
+        setQuote(null);
+        setQuoteError(describeError(err));
+      } finally {
+        if (!controller.signal.aborted) setQuoteLoading(false);
+      }
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartKey, appliedCoupon, quoteGstin]);
+
+  // A new checkout attempt (different basket / coupon / buyer) must not reuse an old idempotency key.
+  useEffect(() => {
+    requestIdRef.current = null;
+  }, [cartKey, appliedCoupon, buyerDetails.name, buyerDetails.phone, buyerDetails.address, buyerDetails.gstin]);
 
   const handleApplyCoupon = () => {
     const code = couponInput.trim().toUpperCase();
-    if (code === 'BALAJI5') {
-      if (cartMetrics.rawSubtotal < 2000) {
-        addToast('BALAJI5 requires a minimum cart value of ₹2,000', 'info');
-        return;
-      }
-      setAppliedDiscountPct(5);
-      addToast('Promo BALAJI5 applied! Extra 5% discount unlocked.');
-    } else {
-      setAppliedDiscountPct(0);
-      addToast('Invalid coupon code. Try BALAJI5', 'error');
+    if (!code) {
+      setAppliedCoupon('');
+      return;
     }
+    setAppliedCoupon(code); // the server validates it (minimum order etc.) when it prices the basket
   };
 
   // --- WISHLIST & COMPARE ---
@@ -834,29 +558,26 @@ export default function App() {
 
   // --- WHATSAPP ORDER & DISPATCH ---
   const sendWhatsAppOrder = () => {
-    if (cart.length === 0) {
+    const lines = (pricing && pricing.lines) || [];
+    if (lines.length === 0) {
       addToast('Add items to your cart first', 'error');
       return;
     }
     let msg = `*NEW ORDER - BALAJI ELECTRICALS (NAMAKKAL)*\n`;
     msg += `Address: 7/149, NH-44 Bypass, Kalangani\n`;
     msg += `------------------------------------------\n`;
-    cart.forEach((item, idx) => {
-      const rate = getEffectiveUnitPrice(item);
-      msg += `${idx + 1}. *${item.name}*\n   Qty: ${item.qty} x ₹${rate} = ₹${(
-        rate * item.qty
-      ).toLocaleString('en-IN')}\n`;
+    if (placedOrder) msg += `Invoice: ${placedOrder.invoiceNumber}\n`;
+    lines.forEach((line, idx) => {
+      msg += `${idx + 1}. *${line.name}*\n   Qty: ${line.qty} x ₹${fmt(line.unitPrice)} = ₹${fmt(line.lineTotal)}\n`;
     });
     msg += `------------------------------------------\n`;
     if (cartMetrics.couponDiscount > 0) {
-      msg += `Coupon Discount (BALAJI5): -₹${cartMetrics.couponDiscount}\n`;
+      msg += `Coupon Discount (${pricing.couponCode}): -₹${fmt(cartMetrics.couponDiscount)}\n`;
     }
-    msg += `*Grand Total (Incl. 18% GST): ₹${cartMetrics.grandTotal.toLocaleString(
-      'en-IN'
-    )}*\n`;
+    msg += `*Grand Total (Incl. GST): ₹${fmt(cartMetrics.grandTotal)}*\n`;
     msg += `Delivery Mode: ${
       cartMetrics.isFreeDelivery
-        ? 'FREE Local Site Delivery (> ₹10,000)'
+        ? `FREE Local Site Delivery (> ₹${fmt(cartMetrics.freeDeliveryThreshold)})`
         : buyerDetails.fulfillment
     }\n`;
     if (buyerDetails.name) msg += `Customer: ${buyerDetails.name} (${buyerDetails.phone})\n`;
@@ -889,59 +610,177 @@ export default function App() {
     );
   };
 
-  // --- ADMIN INVENTORY HANDLERS ---
-  const handleAddAdminProduct = (e) => {
-    e.preventDefault();
-    const priceNum = Number(newSku.price) || 500;
-    const mrpNum = Number(newSku.mrp) || Math.round(priceNum * 1.25);
-    const created = {
-      id: `BE-${112 + products.length}`,
-      name: newSku.name,
-      brand: newSku.brand,
-      category: newSku.category,
-      price: priceNum,
-      mrp: mrpNum,
-      bulkPrice: Math.round(priceNum * 0.94),
-      bulkMinQty: 5,
-      stock: Number(newSku.stock) || 20,
-      rating: 4.9,
-      reviews: 12,
-      badge: 'New Stock',
-      isiCode: 'ISI Certified',
-      voltageGrade: '240V / 1100V',
-      warranty: '1 Year Store Warranty',
-      specs: newSku.specs || 'Genuine Authorized Supply • Ready Stock at Kalangani',
-      description: `${newSku.brand} electrical supply stocked at Balaji Electricals, Kalangani NH-44 Bypass.`,
-      application: 'Standard residential, agricultural, or commercial installation.',
-      image:
-        'https://images.unsplash.com/photo-1544724569-5f546fd6f2b5?auto=format&fit=crop&w=600&q=80'
+  // --- CHECKOUT: save the order (the server prices it, numbers the invoice and checks stock) ---
+  const handlePlaceOrder = async () => {
+    if (placing || placedOrder) return;
+    if (cart.length === 0) {
+      addToast('Add items to your cart first', 'error');
+      return;
+    }
+    const name = buyerDetails.name.trim();
+    const phone = buyerDetails.phone.trim();
+    const address = buyerDetails.address.trim();
+    if (!name || !phone || !address) {
+      setPlaceError('Please enter customer name, phone number and delivery address to generate the invoice.');
+      return;
+    }
+    if (!requestIdRef.current) requestIdRef.current = newRequestId();
+    setPlacing(true);
+    setPlaceError('');
+    try {
+      const order = await api.placeOrder({
+        customer: { name, phone, address, gstin: buyerDetails.gstin.trim() || null },
+        items: cart.map((item) => ({ productId: item.id, qty: item.qty })),
+        couponCode: appliedCoupon || null,
+        fulfillment: buyerDetails.fulfillment,
+        clientRequestId: requestIdRef.current
+      });
+      setPlacedOrder(order);
+      setCart([]);
+      setAppliedCoupon('');
+      setCouponInput('');
+      addToast(`Invoice ${order.invoiceNumber} generated`);
+    } catch (err) {
+      setPlaceError(describeError(err));
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  const closeInvoiceModal = () => {
+    setIsInvoiceModalOpen(false);
+    setPlaceError('');
+    if (placedOrder) {
+      setPlacedOrder(null);
+      setBuyerDetails((prev) => ({ ...prev, name: '', phone: '', address: '', gstin: '' }));
+      requestIdRef.current = null;
+    }
+  };
+
+  // --- ADMIN: LOGIN / SESSION ---
+  const loadAdminProducts = async () => {
+    setAdminLoading(true);
+    setAdminError('');
+    try {
+      setAdminProducts(await api.adminListProducts());
+    } catch (err) {
+      if (err.status !== 401) setAdminError(describeError(err));
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const openAdmin = () => {
+    if (tokenStore.get()) setActiveMode('admin');
+    else setIsLoginOpen(true);
+  };
+
+  const handleAdminLoggedIn = (username) => {
+    setIsLoginOpen(false);
+    setActiveMode('admin');
+    addToast(`Signed in as ${username}`);
+  };
+
+  const handleAdminLogout = () => {
+    api.logout();
+    setAdminProducts([]);
+    setActiveMode('customer');
+    addToast('Signed out', 'info');
+  };
+
+  useEffect(() => {
+    if (activeMode === 'admin') loadAdminProducts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMode]);
+
+  useEffect(() => {
+    const onExpired = () => {
+      setActiveMode('customer');
+      setAdminProducts([]);
+      setIsLoginOpen(true);
+      addToast('Your admin session expired. Please sign in again.', 'error');
     };
-    setProducts((prev) => [created, ...prev]);
-    setNewSku({
-      name: '',
-      brand: 'Finolex Cables',
-      category: 'House Wiring & Cables',
-      price: '',
-      mrp: '',
-      stock: 25,
-      specs: ''
-    });
-    addToast(`Added "${created.name}" to live store catalog!`);
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // --- ADMIN INVENTORY HANDLERS ---
+  const handleAddAdminProduct = async (e) => {
+    e.preventDefault();
+    if (savingSku) return;
+    const price = Number(newSku.price);
+    const mrp = Number(newSku.mrp);
+    if (!(price > 0) || !(mrp > 0)) {
+      addToast('Enter a selling price and an MRP greater than zero', 'error');
+      return;
+    }
+    setSavingSku(true);
+    try {
+      const created = await api.adminCreateProduct({
+        name: newSku.name.trim(),
+        brand: newSku.brand,
+        category: newSku.category,
+        price,
+        mrp,
+        stock: Number(newSku.stock) || 0,
+        badge: 'New Stock',
+        specs: newSku.specs.trim() || 'Genuine Authorized Supply • Ready Stock at Kalangani',
+        description: `${newSku.brand} electrical supply stocked at Balaji Electricals, Kalangani NH-44 Bypass.`,
+        image: 'https://images.unsplash.com/photo-1544724569-5f546fd6f2b5?auto=format&fit=crop&w=600&q=80',
+        active: true
+      });
+      setNewSku({
+        name: '',
+        brand: newSku.brand,
+        category: newSku.category,
+        price: '',
+        mrp: '',
+        stock: 25,
+        specs: ''
+      });
+      addToast(`Added "${created.name}" to live store catalog!`);
+      loadAdminProducts();
+      setCatalogReload((n) => n + 1);
+    } catch (err) {
+      if (err.status !== 401) addToast(describeError(err), 'error');
+    } finally {
+      setSavingSku(false);
+    }
   };
 
-  const adjustProductStock = (id, delta) => {
-    setProducts((prev) =>
-      prev.map((p) =>
-        p.id === id ? { ...p, stock: Math.max(0, p.stock + delta) } : p
-      )
-    );
-    addToast('Inventory count updated');
+  const adjustProductStock = async (id, delta) => {
+    try {
+      const updated = await api.adminSetStock(id, { delta });
+      setAdminProducts((prev) => prev.map((p) => (p.id === id ? updated : p)));
+      addToast('Inventory count updated');
+      setCatalogReload((n) => n + 1);
+    } catch (err) {
+      if (err.status !== 401) addToast(describeError(err), 'error');
+    }
   };
 
-  const resetCatalogToDefault = () => {
-    setProducts(INITIAL_PRODUCTS);
-    localStorage.removeItem('balaji_react_products');
-    addToast('Catalog restored to default authorized items', 'info');
+  const toggleProductActive = async (product) => {
+    try {
+      if (product.active) {
+        if (!window.confirm(`Hide "${product.name}" from the storefront?`)) return;
+        await api.adminDeactivateProduct(product.id);
+        addToast('Product hidden from the storefront', 'info');
+      } else {
+        await api.adminUpdateProduct(product.id, api.productToUpdateBody(product, { active: true }));
+        addToast('Product is live again');
+      }
+      loadAdminProducts();
+      setCatalogReload((n) => n + 1);
+    } catch (err) {
+      if (err.status !== 401) addToast(describeError(err), 'error');
+    }
+  };
+
+  const handleProductSaved = (updated) => {
+    setAdminProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    setEditingProduct(null);
+    setCatalogReload((n) => n + 1);
   };
 
   const scrollToId = (id) => {
@@ -952,12 +791,9 @@ export default function App() {
     }, 60);
   };
 
-  // UPI URI & QR URL
-  const invoiceNumber = useMemo(
-    () => `BE-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-    [isInvoiceModalOpen]
-  );
-  const upiUri = `upi://pay?pa=praveenonline17@okicici&pn=Balaji%20Electricals&am=${cartMetrics.grandTotal}&cu=INR&tn=Bill%20${invoiceNumber}`;
+  // UPI URI & QR URL (the invoice number is issued by the server when the invoice is generated)
+  const invoiceNumber = placedOrder ? placedOrder.invoiceNumber : 'DRAFT';
+  const upiUri = `upi://pay?pa=praveenonline17@okicici&pn=Balaji%20Electricals&am=${Number(cartMetrics.grandTotal).toFixed(2)}&cu=INR&tn=Bill%20${encodeURIComponent(invoiceNumber)}`;
   const upiQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
     upiUri
   )}`;
@@ -1046,7 +882,7 @@ export default function App() {
                 Shop
               </button>
               <button
-                onClick={() => setActiveMode('admin')}
+                onClick={openAdmin}
                 className={`px-2.5 py-0.5 rounded-full text-[10px] font-medium transition ${
                   activeMode === 'admin'
                     ? 'bg-red-600 text-white font-bold'
@@ -1163,7 +999,7 @@ export default function App() {
         <nav className="w-full bg-slate-900 text-slate-300 text-xs border-t border-slate-800">
           <div className={`${CONTAINER_CLASS} flex items-center justify-between overflow-x-auto py-2 gap-2 no-scrollbar`}>
             <div className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
-              {CATEGORIES.map((cat) => (
+              {['All Categories', ...categoryNames].map((cat) => (
                 <button
                   key={cat}
                   onClick={() => {
@@ -1181,26 +1017,6 @@ export default function App() {
               ))}
             </div>
 
-            {/* Contractor Bulk Pricing Toggle */}
-            <div className="hidden lg:flex items-center gap-2 pl-4 border-l border-slate-800 whitespace-nowrap">
-              <label className="flex items-center gap-2 cursor-pointer text-[11px] font-semibold text-amber-400">
-                <input
-                  type="checkbox"
-                  checked={bulkPricingMode}
-                  onChange={(e) => {
-                    setBulkPricingMode(e.target.checked);
-                    addToast(
-                      e.target.checked
-                        ? 'Contractor Wholesale Rates Activated!'
-                        : 'Switched to Standard Retail Pricing',
-                      'info'
-                    );
-                  }}
-                  className="rounded text-red-600 focus:ring-red-600"
-                />
-                <span>Contractor Bulk Rates</span>
-              </label>
-            </div>
           </div>
         </nav>
       </header>
@@ -1353,7 +1169,7 @@ export default function App() {
                 Click Brand to Filter:
               </span>
               <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                {BRANDS.map((brand) => (
+                {['All', ...brandNames].map((brand) => (
                   <button
                     key={brand}
                     onClick={() => setSelectedBrand(brand)}
@@ -1492,7 +1308,24 @@ export default function App() {
             </div>
 
             {/* Product Grid - Responsive across Mobile, Laptop, Monitor & TV */}
-            {filteredProducts.length === 0 ? (
+            {catalogError ? (
+              <div className="bg-white rounded-2xl border border-rose-200 p-12 text-center space-y-3">
+                <Package className="w-12 h-12 text-rose-300 mx-auto" />
+                <h3 className="text-base font-bold text-slate-800">Could not load the catalogue</h3>
+                <p className="text-xs text-rose-700 max-w-sm mx-auto">{catalogError}</p>
+                <button
+                  onClick={() => setCatalogReload((n) => n + 1)}
+                  className="px-4 py-2 bg-red-600 text-white text-xs font-bold rounded-xl"
+                >
+                  Try Again
+                </button>
+              </div>
+            ) : catalogLoading && filteredProducts.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-3">
+                <RefreshCw className="w-8 h-8 text-slate-300 mx-auto animate-spin" />
+                <p className="text-xs font-bold text-slate-500">Loading products…</p>
+              </div>
+            ) : filteredProducts.length === 0 ? (
               <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-3">
                 <Package className="w-12 h-12 text-slate-300 mx-auto" />
                 <h3 className="text-base font-bold text-slate-800">
@@ -1516,7 +1349,7 @@ export default function App() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-5">
                 {filteredProducts.map((item) => {
-                  const displayPrice = bulkPricingMode ? item.bulkPrice : item.price;
+                  const displayPrice = item.price;
                   const discountPct = Math.round(
                     ((item.mrp - displayPrice) / item.mrp) * 100
                   );
@@ -1961,15 +1794,21 @@ export default function App() {
                 Balaji Electricals — Inventory &amp; Rate Manager
               </h2>
               <p className="text-xs text-slate-400">
-                Changes saved automatically to browser storage • GSTIN: 33BIBPR8021G1ZH
+                Live data from the store server • GSTIN: 33BIBPR8021G1ZH
               </p>
             </div>
             <div className="flex items-center gap-2.5">
               <button
-                onClick={resetCatalogToDefault}
+                onClick={loadAdminProducts}
                 className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1.5 border border-slate-700"
               >
-                <RefreshCw className="w-3.5 h-3.5" /> Reset Demo Data
+                <RefreshCw className="w-3.5 h-3.5" /> Refresh
+              </button>
+              <button
+                onClick={handleAdminLogout}
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700"
+              >
+                Sign Out
               </button>
               <button
                 onClick={() => setActiveMode('customer')}
@@ -2008,7 +1847,7 @@ export default function App() {
                       onChange={(e) => setNewSku({ ...newSku, brand: e.target.value })}
                       className="w-full py-2 px-2 border border-slate-300 rounded-xl font-semibold"
                     >
-                      {BRANDS.filter((b) => b !== 'All').map((b) => (
+                      {brandNames.map((b) => (
                         <option key={b}>{b}</option>
                       ))}
                     </select>
@@ -2024,7 +1863,7 @@ export default function App() {
                       }
                       className="w-full py-2 px-2 border border-slate-300 rounded-xl font-semibold"
                     >
-                      {CATEGORIES.filter((c) => c !== 'All Categories').map((c) => (
+                      {categoryNames.map((c) => (
                         <option key={c}>{c}</option>
                       ))}
                     </select>
@@ -2045,9 +1884,10 @@ export default function App() {
                     />
                   </div>
                   <div>
-                    <label className="font-bold text-slate-700 block mb-1">MRP ₹</label>
+                    <label className="font-bold text-slate-700 block mb-1">MRP ₹ *</label>
                     <input
                       type="number"
+                      required
                       placeholder="2250"
                       value={newSku.mrp}
                       onChange={(e) => setNewSku({ ...newSku, mrp: e.target.value })}
@@ -2078,9 +1918,10 @@ export default function App() {
                 </div>
                 <button
                   type="submit"
-                  className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition"
+                  disabled={savingSku}
+                  className="w-full py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-bold rounded-xl transition"
                 >
-                  Publish Product to Catalog
+                  {savingSku ? 'Publishing…' : 'Publish Product to Catalog'}
                 </button>
               </form>
             </div>
@@ -2088,8 +1929,14 @@ export default function App() {
             {/* Live Stock & Price Table */}
             <div className="lg:col-span-8 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs overflow-x-auto">
               <h3 className="text-sm font-black text-slate-900 mb-4">
-                Active Store SKUs ({products.length})
+                Store SKUs ({adminProducts.length})
               </h3>
+              {adminLoading && <p className="text-xs text-slate-500 mb-3">Loading inventory…</p>}
+              {adminError && (
+                <p className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-2.5 mb-3">
+                  {adminError}
+                </p>
+              )}
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-400 uppercase">
@@ -2101,15 +1948,22 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {products.map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50">
+                  {adminProducts.map((p) => (
+                    <tr key={p.id} className={`hover:bg-slate-50 ${p.active ? '' : 'opacity-50'}`}>
                       <td className="py-3 pr-2">
-                        <div className="font-bold text-slate-900">{p.name}</div>
+                        <div className="font-bold text-slate-900">
+                          {p.name}
+                          {!p.active && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 text-[9px] font-bold uppercase">
+                              Hidden
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[10px] text-slate-400 font-mono">{p.id}</div>
                       </td>
                       <td className="py-3 font-semibold text-slate-700">{p.brand}</td>
                       <td className="py-3 font-black text-slate-900">
-                        ₹{p.price.toLocaleString('en-IN')}
+                        ₹{fmt(p.price)}
                       </td>
                       <td className="py-3">
                         <span
@@ -2135,6 +1989,18 @@ export default function App() {
                         >
                           -5
                         </button>
+                        <button
+                          onClick={() => setEditingProduct(p)}
+                          className="px-2 py-1 bg-sky-50 hover:bg-sky-100 text-sky-800 rounded font-bold text-[10px]"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => toggleProductActive(p)}
+                          className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded font-bold text-[10px]"
+                        >
+                          {p.active ? 'Hide' : 'Restore'}
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -2142,7 +2008,25 @@ export default function App() {
               </table>
             </div>
           </div>
+
+          <AdminOrdersPanel addToast={addToast} onInventoryChanged={loadAdminProducts} />
         </main>
+      )}
+
+      <AdminLoginModal
+        isOpen={isLoginOpen}
+        onClose={() => setIsLoginOpen(false)}
+        onSuccess={handleAdminLoggedIn}
+      />
+      {editingProduct && (
+        <ProductEditModal
+          product={editingProduct}
+          categoryOptions={categoryNames}
+          brandOptions={brandNames}
+          onClose={() => setEditingProduct(null)}
+          onSaved={handleProductSaved}
+          addToast={addToast}
+        />
       )}
 
       {/* ================= COMPARE FLOATING BAR ================= */}
@@ -2500,7 +2384,7 @@ export default function App() {
                     <div className="text-[10px] text-slate-400">{p.brand}</div>
                   </div>
                   <span className="font-black text-red-600">
-                    ₹{p.price.toLocaleString('en-IN')}
+                    ₹{fmt(p.price)}
                   </span>
                 </div>
               ))}
@@ -2543,9 +2427,7 @@ export default function App() {
                 ) : (
                   <span className="text-slate-700">
                     Add ₹
-                    {(
-                      cartMetrics.freeDeliveryThreshold - cartMetrics.grandTotal
-                    ).toLocaleString('en-IN')}{' '}
+                    {fmt(Math.max(0, cartMetrics.freeDeliveryThreshold - cartMetrics.grandTotal))}{' '}
                     more for Free Delivery
                   </span>
                 )}
@@ -2573,8 +2455,9 @@ export default function App() {
                 </div>
               ) : (
                 cart.map((item) => {
+                  const line = lineByProduct[item.id];
                   const unitRate = getEffectiveUnitPrice(item);
-                  const isBulkApplied = unitRate < item.price;
+                  const isBulkApplied = Boolean(line && line.bulkApplied);
                   return (
                     <div
                       key={item.id}
@@ -2595,10 +2478,10 @@ export default function App() {
                         </h4>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="text-xs font-black text-red-600">
-                            ₹{(unitRate * item.qty).toLocaleString('en-IN')}
+                            {line ? `₹${fmt(line.lineTotal)}` : '…'}
                           </span>
                           <span className="text-[10px] text-slate-400">
-                            (₹{unitRate}/ea)
+                            (₹{fmt(unitRate)}/ea)
                           </span>
                           {isBulkApplied && (
                             <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-bold">
@@ -2632,6 +2515,14 @@ export default function App() {
             {/* Cart Footer Summary */}
             {cart.length > 0 && (
               <div className="p-4 border-t border-slate-200 bg-slate-50 space-y-3 text-xs">
+                {quoteError && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 font-semibold">
+                    {quoteError}
+                  </div>
+                )}
+                {quoteLoading && !quoteError && (
+                  <div className="text-[11px] text-slate-500 font-semibold">Updating prices…</div>
+                )}
                 {/* Promo Code Input */}
                 <div className="flex gap-2">
                   <input
@@ -2652,24 +2543,24 @@ export default function App() {
                 <div className="space-y-1 text-slate-600 pt-1">
                   <div className="flex justify-between">
                     <span>Taxable Value</span>
-                    <span>₹{cartMetrics.taxableValue.toLocaleString('en-IN')}</span>
+                    <span>₹{fmt(cartMetrics.taxableValue)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>CGST (9%) + SGST (9%)</span>
                     <span>
-                      ₹{(cartMetrics.cgst + cartMetrics.sgst).toLocaleString('en-IN')}
+                      ₹{fmt(cartMetrics.gstTotal)}
                     </span>
                   </div>
                   {cartMetrics.couponDiscount > 0 && (
                     <div className="flex justify-between text-emerald-700 font-bold">
-                      <span>Coupon Discount (5%)</span>
-                      <span>-₹{cartMetrics.couponDiscount.toLocaleString('en-IN')}</span>
+                      <span>Coupon Discount ({fmt(cartMetrics.couponPercent)}%)</span>
+                      <span>-₹{fmt(cartMetrics.couponDiscount)}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm font-black text-slate-900 pt-2 border-t border-slate-200">
                     <span>Grand Total</span>
                     <span className="text-red-600 text-base">
-                      ₹{cartMetrics.grandTotal.toLocaleString('en-IN')}
+                      {pricing ? `₹${fmt(cartMetrics.grandTotal)}` : '…'}
                     </span>
                   </div>
                 </div>
@@ -2677,7 +2568,8 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={sendWhatsAppOrder}
-                    className="py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center justify-center gap-1.5 shadow"
+                    disabled={!quote || quoteLoading}
+                    className="py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold flex items-center justify-center gap-1.5 shadow"
                   >
                     <MessageCircle className="w-4 h-4" />
                     <span>WhatsApp Order</span>
@@ -2685,9 +2577,11 @@ export default function App() {
                   <button
                     onClick={() => {
                       setIsCartOpen(false);
+                      setPlaceError('');
                       setIsInvoiceModalOpen(true);
                     }}
-                    className="py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold flex items-center justify-center gap-1.5 shadow"
+                    disabled={!quote || quoteLoading}
+                    className="py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold flex items-center justify-center gap-1.5 shadow"
                   >
                     <QrCode className="w-4 h-4" />
                     <span>GST Bill &amp; UPI Pay</span>
@@ -2713,7 +2607,7 @@ export default function App() {
                 </p>
               </div>
               <button
-                onClick={() => setIsInvoiceModalOpen(false)}
+                onClick={closeInvoiceModal}
                 className="p-1.5 rounded-full bg-slate-100"
               >
                 <X className="w-4 h-4" />
@@ -2726,19 +2620,21 @@ export default function App() {
                 type="text"
                 placeholder="Customer / Business Name"
                 value={buyerDetails.name}
+                disabled={Boolean(placedOrder)}
                 onChange={(e) =>
                   setBuyerDetails({ ...buyerDetails, name: e.target.value })
                 }
-                className="py-2 px-3 border border-slate-300 rounded-xl"
+                className="py-2 px-3 border border-slate-300 rounded-xl disabled:bg-slate-100"
               />
               <input
                 type="tel"
                 placeholder="Phone Number"
                 value={buyerDetails.phone}
+                disabled={Boolean(placedOrder)}
                 onChange={(e) =>
                   setBuyerDetails({ ...buyerDetails, phone: e.target.value })
                 }
-                className="py-2 px-3 border border-slate-300 rounded-xl"
+                className="py-2 px-3 border border-slate-300 rounded-xl disabled:bg-slate-100"
               />
               <input
                 type="text"
@@ -2750,7 +2646,18 @@ export default function App() {
                     gstin: e.target.value.toUpperCase()
                   })
                 }
-                className="py-2 px-3 border border-slate-300 rounded-xl uppercase font-mono"
+                disabled={Boolean(placedOrder)}
+                className="py-2 px-3 border border-slate-300 rounded-xl uppercase font-mono disabled:bg-slate-100"
+              />
+              <input
+                type="text"
+                placeholder="Delivery Address *"
+                value={buyerDetails.address}
+                disabled={Boolean(placedOrder)}
+                onChange={(e) =>
+                  setBuyerDetails({ ...buyerDetails, address: e.target.value })
+                }
+                className="sm:col-span-3 py-2 px-3 border border-slate-300 rounded-xl disabled:bg-slate-100"
               />
             </div>
 
@@ -2781,7 +2688,7 @@ export default function App() {
                   </span>
                   <div className="font-bold text-slate-900 mt-1">{invoiceNumber}</div>
                   <div className="text-[11px] text-slate-500">
-                    Date: {new Date().toLocaleDateString('en-IN')}
+                    Date: {placedOrder ? formatInvoiceDate(placedOrder.invoiceDate) : new Date().toLocaleDateString('en-IN')}
                   </div>
                 </div>
               </div>
@@ -2812,23 +2719,14 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {cart.map((item) => {
-                    const rate = getEffectiveUnitPrice(item);
-                    return (
-                      <tr key={item.id}>
-                        <td className="py-2 font-semibold text-slate-900">
-                          {item.name}
-                        </td>
-                        <td className="py-2 text-center font-mono">{item.qty}</td>
-                        <td className="py-2 text-right font-mono">
-                          ₹{rate.toLocaleString('en-IN')}
-                        </td>
-                        <td className="py-2 text-right font-mono font-bold">
-                          ₹{(rate * item.qty).toLocaleString('en-IN')}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {((pricing && pricing.lines) || []).map((line) => (
+                    <tr key={line.productId}>
+                      <td className="py-2 font-semibold text-slate-900">{line.name}</td>
+                      <td className="py-2 text-center font-mono">{line.qty}</td>
+                      <td className="py-2 text-right font-mono">₹{fmt(line.unitPrice)}</td>
+                      <td className="py-2 text-right font-mono font-bold">₹{fmt(line.lineTotal)}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
 
@@ -2860,28 +2758,64 @@ export default function App() {
                 <div className="space-y-1 text-right font-mono">
                   <div className="flex justify-between text-slate-600">
                     <span>Taxable Subtotal:</span>
-                    <span>₹{cartMetrics.taxableValue.toLocaleString('en-IN')}</span>
+                    <span>₹{fmt(cartMetrics.taxableValue)}</span>
                   </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>CGST (9%):</span>
-                    <span>₹{cartMetrics.cgst.toLocaleString('en-IN')}</span>
-                  </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>SGST (9%):</span>
-                    <span>₹{cartMetrics.sgst.toLocaleString('en-IN')}</span>
-                  </div>
+                  {cartMetrics.couponDiscount > 0 && (
+                    <div className="flex justify-between text-emerald-700">
+                      <span>Coupon ({pricing.couponCode}):</span>
+                      <span>-₹{fmt(cartMetrics.couponDiscount)}</span>
+                    </div>
+                  )}
+                  {cartMetrics.igst > 0 ? (
+                    <div className="flex justify-between text-slate-600">
+                      <span>IGST ({fmt(pricing.gstRate)}%):</span>
+                      <span>₹{fmt(cartMetrics.igst)}</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex justify-between text-slate-600">
+                        <span>CGST ({fmt(Number(pricing && pricing.gstRate) / 2)}%):</span>
+                        <span>₹{fmt(cartMetrics.cgst)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-600">
+                        <span>SGST ({fmt(Number(pricing && pricing.gstRate) / 2)}%):</span>
+                        <span>₹{fmt(cartMetrics.sgst)}</span>
+                      </div>
+                    </>
+                  )}
                   <div className="flex justify-between text-base font-black text-slate-900 border-t border-slate-300 pt-1.5">
                     <span>Net Payable:</span>
                     <span className="text-red-600">
-                      ₹{cartMetrics.grandTotal.toLocaleString('en-IN')}
+                      ₹{fmt(cartMetrics.grandTotal)}
                     </span>
                   </div>
                 </div>
               </div>
             </div>
 
+            {placeError && (
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold print:hidden">
+                {placeError}
+              </div>
+            )}
+            {!placedOrder && (
+              <p className="text-[11px] text-slate-500 print:hidden">
+                This is a draft. “Generate Official Invoice” saves the order and issues the invoice number; stock is
+                reserved only when the store confirms the order.
+              </p>
+            )}
+
             {/* Modal Actions */}
             <div className="flex flex-wrap gap-2.5 justify-end print:hidden">
+              {!placedOrder && (
+                <button
+                  onClick={handlePlaceOrder}
+                  disabled={placing || !quote || quoteLoading}
+                  className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-xs"
+                >
+                  {placing ? 'Generating…' : 'Generate Official Invoice'}
+                </button>
+              )}
               <button
                 onClick={() => window.print()}
                 className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5"
@@ -2945,7 +2879,7 @@ export default function App() {
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-500 font-medium">Net Payable:</span>
                 <span className="text-lg font-black text-red-600 font-mono">
-                  ₹{cartMetrics.grandTotal.toLocaleString('en-IN')}
+                  ₹{fmt(cartMetrics.grandTotal)}
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-200">
