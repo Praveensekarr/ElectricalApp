@@ -1760,7 +1760,7 @@ export default function App() {
                 </div>
 
                 <a
-                  href="https://maps.app.goo.gl/W2iNoYMso1KiQxtm9"
+                  href="https://maps.app.goo.gl/W2iNoYMso1KiQxtm9?hl=en"
                   target="_blank"
                   rel="noreferrer"
                   className="w-full py-3 bg-slate-900 hover:bg-red-600 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow"
@@ -2970,8 +2970,35 @@ export default function App() {
         </div>
       </footer>
 
+      {/* ================= FLOATING ACTION BUTTON (FAB) CART ================= */}
+      {cartMetrics.totalItems > 0 && (
+        <button
+          type="button"
+          onClick={() => setIsCartOpen(true)}
+          aria-label={`View shopping cart with ${cartMetrics.totalItems} item${cartMetrics.totalItems === 1 ? '' : 's'}`}
+          className={`fixed bottom-6 right-6 z-50 group flex items-center gap-3 bg-red-600 hover:bg-red-700 active:scale-95 text-white px-4 py-3 sm:px-5 sm:py-3.5 rounded-full shadow-2xl hover:shadow-red-600/50 border-2 border-white backdrop-blur-xs transition-all duration-300 ease-out transform cursor-pointer print:hidden ${
+            isCartOpen ? 'opacity-0 pointer-events-none scale-90 translate-y-4' : 'opacity-100 scale-100 translate-y-0'
+          }`}
+        >
+          <div className="relative flex items-center justify-center">
+            <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 transition-transform" />
+            <span className="absolute -top-2.5 -right-2.5 bg-white text-red-600 text-[11px] font-black min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center shadow-md border border-red-200">
+              {cartMetrics.totalItems}
+            </span>
+          </div>
+          <div className="flex flex-col text-left leading-tight pr-0.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-red-100 hidden sm:block">
+              Cart
+            </span>
+            <span className="text-xs sm:text-sm font-black text-white whitespace-nowrap">
+              {cartMetrics.grandTotal > 0 ? `₹${fmt(cartMetrics.grandTotal)}` : 'View Cart'}
+            </span>
+          </div>
+        </button>
+      )}
+
       {/* ================= TOAST NOTIFICATIONS ================= */}
-      <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none print:hidden">
+      <div className={`fixed ${cartMetrics.totalItems > 0 ? 'bottom-24' : 'bottom-5'} right-5 z-50 flex flex-col gap-2 pointer-events-none print:hidden transition-all duration-300`}>
         {toasts.map((t) => (
           <div
             key={t.id}
